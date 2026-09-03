@@ -120,7 +120,7 @@ through the target's 65,536 bytes per token that is **235 GB/s**, the box's bus.
 
 `bench/concbench.py`, recommended recipe, distinct 2k-token code prefixes
 pre-filled once, 512 output tokens, temperature 0, all streams started together,
-median of 2 runs per rung, one boot per profile, 2026-09-02. Data
+mean of 2 runs per rung, one boot per profile, 2026-09-02. Data
 `data/concbench.csv`; chart `charts/concurrency.png`.
 
 | Profile | Streams | Aggregate tok/s | Per-stream tok/s | Median TTFT | tok/pass | KV pool |

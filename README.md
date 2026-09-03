@@ -15,7 +15,7 @@ behind them as CSV, and the kept FlashInfer autotune draws, the fix for a boot l
 Conditions: a coding task on real source, 512 output tokens, temperature 0,
 thinking off, decode only (time to first token excluded), median of 4 runs per
 rung, two boots; the concurrency figures are distinct 2k-token code prefixes,
-512 output tokens, median of 2, one boot per profile. Past 65k it falls: 56 at 130k, 38-41 at 260k. Everything
+512 output tokens, mean of 2 runs, one boot per profile. Past 65k it falls: 56 at 130k, 38-41 at 260k. Everything
 else, with its conditions, is in [RESULTS.md](RESULTS.md).
 
 **Replicated from this repository alone, 2026-09-02:** a fresh copy of the repo
@@ -124,7 +124,7 @@ way on chat; a smaller draft budget does not help (8 is +3%, 4 is −12%).
 
 **Concurrency.** `bench/concbench.py`: every stream gets its own 2k-token code
 prefix (pre-filled once), 512 output tokens, temperature 0, all streams started
-together, median of 2 runs per rung. Two profiles, one boot each.
+together, mean of 2 runs per rung. Two profiles, one boot each.
 
 | Streams | 1 | 2 | 4 | 8 | 16 | 32 |
 |---|---|---|---|---|---|---|

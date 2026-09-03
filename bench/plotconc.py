@@ -34,7 +34,7 @@ def main():
     ap.add_argument("csv"); ap.add_argument("--out", default="charts/concurrency.png")
     ap.add_argument("--profiles", default="16-seat,32-seat", help="comma-separated profile names to draw")
     ap.add_argument("--title", default="Qwen3.8-27B on one DGX Spark: 1 to 32 concurrent requests")
-    ap.add_argument("--sub", default="SGLang · NVFP4 weights · 4-bit DFlash2 drafter, budget 16 · distinct 2k-token code prefixes · 512 output tokens · temperature 0 · median of 2 · one boot per profile")
+    ap.add_argument("--sub", default="SGLang · NVFP4 weights · 4-bit DFlash2 drafter, budget 16 · distinct 2k-token code prefixes · 512 output tokens · temperature 0 · mean of 2 runs · one boot per profile")
     a = ap.parse_args()
     rows = list(csv.DictReader(open(a.csv)))
     profiles = a.profiles.split(",")
