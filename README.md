@@ -112,6 +112,15 @@ layers pay for context depth; the other 48 carry constant-size recurrent state.
 Boot to boot the same rungs differ by a median 4.3% and at worst 8.1%, which is
 why the honest headline is "about 70 tok/s to 65k", not one rung to three digits.
 
+**Chat is slower than code, and that is the drafter, not the setup.** The
+64-78 tok/s above is a coding task on real source. On mixed chat prompts the
+same server does **~30 tok/s**: the block drafter accepts ~3 tokens per verify
+pass on prose against 7-9 on code, at the same ~100 ms per pass. Measured with
+the Inference Atlas harness on this box (30.4 tok/s, 3.1 accepted) and
+reproduced independently on another Spark (33 tok/s, ~3 accepted, 102 ms ITL).
+Prefill is unaffected. Every published drafter for this model behaves the same
+way on chat; a smaller draft budget does not help (8 is +3%, 4 is −12%).
+
 **Concurrency.** `bench/concbench.py` measures aggregate and per-stream
 generation at N simultaneous requests; boot with `MAX_RUNNING` at or above N.
 Those numbers get their own write-up.
