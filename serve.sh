@@ -91,7 +91,10 @@ write_ref() {                                   # write_ref <repo-id> <sha>
     fi
     return 0
   fi
-  [ -d "$dir/snapshots/$2" ] || return 0
+  if [ ! -d "$dir/snapshots/$2" ]; then
+    echo "warning: $1 has no snapshot $2 in $HF_CACHE; refs/main not written (README, Weights)" >&2
+    return 0
+  fi
   if ! compgen -G "$dir/snapshots/$2/*.safetensors" >/dev/null; then
     echo "warning: $1 snapshot $2 holds no .safetensors; refs/main left alone (README, Weights)" >&2
     return 0
@@ -106,6 +109,30 @@ write_ref() {                                   # write_ref <repo-id> <sha>
 }
 write_ref "$MODEL" "$REVISION"
 if [ "$SPEC" = "1" ]; then write_ref "$DRAFT" "$DRAFT_REVISION"; fi
+
+# Refuse to boot without a usable refs/main. Offline, the alias resolver above
+# reads it, so a missing one costs a 200 s boot that ends in a crash loop, and
+# `HF_HUB_OFFLINE=0` then looks like the fix when the real fault is one file.
+check_ref() {                                   # check_ref <repo-id>
+  local dir="$HF_CACHE/hub/models--${1//\//--}" sha
+  sha=$(cat "$dir/refs/main" 2>/dev/null) || true
+  if [ -z "$sha" ]; then
+    echo "$1 has no $dir/refs/main. The offline boot needs it. Write it with:" >&2
+    echo "  mkdir -p $dir/refs && printf '%s' <snapshot-sha> > $dir/refs/main" >&2
+    echo "See README, Weights for both SHAs; \`source .env\` and serve.sh writes them for you." >&2
+    exit 2
+  fi
+  if [ ! -d "$dir/snapshots/$sha" ]; then
+    echo "$1 refs/main names $sha, which is not in $dir/snapshots (README, Weights)" >&2
+    exit 2
+  fi
+  if ! compgen -G "$dir/snapshots/$sha/*.safetensors" >/dev/null; then
+    echo "$1 refs/main names $sha, which holds no .safetensors - a partial download (README, Weights)" >&2
+    exit 2
+  fi
+}
+check_ref "$MODEL"
+if [ "$SPEC" = "1" ]; then check_ref "$DRAFT"; fi
 
 mkdir -p "$SGLANG_CACHE"
 
