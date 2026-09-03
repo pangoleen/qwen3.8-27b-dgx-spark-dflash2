@@ -8,13 +8,14 @@ speculative drafter at a draft budget of 16. It ships the engine image build, th
 launch script, the six benchmarks that produced every number below, the rows
 behind them as CSV, and the kept FlashInfer autotune draws, the fix for a boot lottery worth 16%.
 
-| Single stream, 320 tokens to 65k of context | Accepted tokens per verify pass | Prefill |
-|---|---|---|
-| **64-78 tok/s**, two boots | 6.8-8.3 of a budget of 16 | ~2,500 tok/s peak, 928 at 260k |
+| Single stream, 320 tokens to 65k of context | 16 concurrent streams | 32 concurrent streams | Accepted tokens per verify pass |
+|---|---|---|---|
+| **64-78 tok/s**, two boots | **360 tok/s** aggregate, 27 per stream | **387 tok/s** aggregate, 15 per stream (32-seat profile) | 6.8-8.3 of a budget of 16 |
 
 Conditions: a coding task on real source, 512 output tokens, temperature 0,
 thinking off, decode only (time to first token excluded), median of 4 runs per
-rung, two boots. Past 65k it falls: 56 at 130k, 38-41 at 260k. Everything
+rung, two boots; the concurrency figures are distinct 2k-token code prefixes,
+512 output tokens, median of 2, one boot per profile. Past 65k it falls: 56 at 130k, 38-41 at 260k. Everything
 else, with its conditions, is in [RESULTS.md](RESULTS.md).
 
 **Replicated from this repository alone, 2026-09-02:** a fresh copy of the repo
@@ -121,9 +122,25 @@ reproduced independently on another Spark (33 tok/s, ~3 accepted, 102 ms ITL).
 Prefill is unaffected. Every published drafter for this model behaves the same
 way on chat; a smaller draft budget does not help (8 is +3%, 4 is −12%).
 
-**Concurrency.** `bench/concbench.py` measures aggregate and per-stream
-generation at N simultaneous requests; boot with `MAX_RUNNING` at or above N.
-Those numbers get their own write-up.
+**Concurrency.** `bench/concbench.py`: every stream gets its own 2k-token code
+prefix (pre-filled once), 512 output tokens, temperature 0, all streams started
+together, median of 2 runs per rung. Two profiles, one boot each.
+
+| Streams | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| 16-seat profile (`MAX_RUNNING=16`, mem 0.65): aggregate tok/s | 81.6 | 119.3 | 199.4 | 276.0 | **359.5** | — |
+| per stream / median TTFT | 85.0 / 0.14 s | 66.1 / 0.27 s | 57.5 / 0.31 s | 42.7 / 0.46 s | 26.8 / 0.70 s | — |
+| 32-seat profile (`MAX_RUNNING=32`, mem 0.80): aggregate tok/s | 67.6 | 115.1 | 168.8 | 224.1 | 337.4 | **387.2** |
+| per stream / median TTFT | 70.8 / 0.14 s | 66.2 / 0.27 s | 51.2 / 0.31 s | 37.4 / 0.38 s | 26.1 / 0.80 s | 15.3 / 1.09 s |
+
+Accepted tokens per pass stay at 7-9 all the way up. The two profiles are
+different boots and are drawn as two lines, not one curve: below 16 streams the
+32-seat boot runs 8-19% under the 16-seat one. A 32-seat boot at the recipe's
+0.65 memory share is a trap: the KV pool collapses to 49,958 tokens and every
+rung loses (213 tok/s at 32); the 0.80 share gives it 173,120. Rows for all
+three boots are in `data/concbench.csv`.
+
+![Concurrency](charts/concurrency.png)
 
 **Three recipes, same box, same prompts.** The drafter swap is the adoption;
 fp8 KV is measured but held back (RESULTS.md §7).
@@ -222,7 +239,7 @@ thing without editing the file.
 | `DRAFT_QUANT` | `modelopt_fp4` | names the drafter's quantisation scheme | required for that checkpoint; the same path the target runs |
 | `DRAFT_TOKENS` | `16` | tokens per verify pass | 8 → 16 is +69.3% edit, +10.5% fresh; 24 is past the knee |
 | `KV_DTYPE` | `bfloat16` | KV cache dtype | `fp8_e4m3` is +20-29% past 130k and −12-21% prefill; not adopted |
-| `MAX_RUNNING` | `4` | concurrent requests | 4 keeps a 413,460-token KV pool; 16 cuts it to 238,605, below the context window |
+| `MAX_RUNNING` | `4` | concurrent requests | 4 keeps a 413,460-token KV pool; 16 buys 360 tok/s aggregate and cuts it to 238,605; 32 needs `MEM_FRACTION=0.80` (pool 173,120, 387 tok/s) or it collapses to 49,958 |
 | `AUTOTUNE` | `1` | keeps FlashInfer autotuning on | required for the mounted tactic cache to be used |
 | `SGLANG_CACHE` | `~/sglang-cache` | host path for the tactic cache | the whole of the section above |
 | `HF_CACHE` | `~/models/hf` | host path of the Hugging Face cache, mounted read-only-in-spirit with `HF_HUB_OFFLINE=1` | see Weights |
@@ -245,7 +262,8 @@ They write one jsonl per run into `results/`, which is git-ignored.
 ```bash
 export SPARK_API_KEY=$(cat ~/models/vllm_api_key.txt)
 python3 bench/ctxsweep.py  --label recommended --out-tokens 512 --reps 4
-python3 bench/concbench.py --label recommended --conc 1,2,4,8   # needs MAX_RUNNING>=8
+python3 bench/concbench.py --label recommended --conc 1,2,4,8,16   # boot with MAX_RUNNING>=16
+python3 bench/plotconc.py data/concbench.csv --out charts/concurrency.png
 python3 bench/plotx.py data/ctxsweep-recommended.csv --panels all \
         --out charts/ctxsweep-27b.png
 python3 bench/plotx.py data/ctxsweep-three-recipes.csv --panels compare \
@@ -338,10 +356,12 @@ bench/concbench.py              concurrency ladder          --conc, needs MAX_RU
 bench/accfix.py                 fixed-output acceptance     --lengths, isolates the drafter
 bench/lossless.py               greedy token diff           --compare, and SPEC=0 for the arm
 bench/profpass.py               per-pass profiler breakdown /start_profile trace as input
-bench/plotx.py                  rebuild every chart         --panels all|three|compare
+bench/plotx.py                  rebuild the sweep charts    --panels all|three|compare
+bench/plotconc.py               rebuild the concurrency chart from data/concbench.csv
 data/ctxsweep-recommended.csv   the sweep, T=0 and T=1 rows
 data/ctxsweep-three-recipes.csv three recipes at each rung
 data/lossless.csv               one row per prompt per arm; hashes, no completion text
+data/concbench.csv              one row per (profile, streams); three boots
 data/tactic-cache/<hash>/       the kept autotune draws     SGLANG_CACHE, see the section above
 charts/*.png                    regenerated from data/ by bench/plotx.py
 RESULTS.md                      every table, with its conditions, and the measuring lessons

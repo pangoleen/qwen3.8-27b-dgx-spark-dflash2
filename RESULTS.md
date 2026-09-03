@@ -118,10 +118,24 @@ through the target's 65,536 bytes per token that is **235 GB/s**, the box's bus.
 
 ## 4. Concurrency
 
-Measured with `bench/concbench.py`; the aggregate and per-stream ladder gets its
-own write-up. One finding belongs here because it is a configuration fact:
-`MAX_RUNNING=16` leaves a KV pool of 238,605 tokens against 413,460 at
-`MAX_RUNNING=4`, so inputs above ~238k are refused on a 16-seat boot.
+`bench/concbench.py`, recommended recipe, distinct 2k-token code prefixes
+pre-filled once, 512 output tokens, temperature 0, all streams started together,
+median of 2 runs per rung, one boot per profile, 2026-09-02. Data
+`data/concbench.csv`; chart `charts/concurrency.png`.
+
+| Profile | Streams | Aggregate tok/s | Per-stream tok/s | Median TTFT | tok/pass | KV pool |
+|---|---|---|---|---|---|---|
+| 16-seat (`MAX_RUNNING=16`, mem 0.65) | 1 / 2 / 4 / 8 / 16 | 81.6 / 119.3 / 199.4 / 276.0 / **359.5** | 85.0 / 66.1 / 57.5 / 42.7 / 26.8 | 0.14 / 0.27 / 0.31 / 0.46 / 0.70 s | 9.1 / 7.0 / 7.4 / 7.5 / 7.3 | 238,605 |
+| 32-seat (`MAX_RUNNING=32`, mem 0.80) | 1 / 2 / 4 / 8 / 16 / 32 | 67.6 / 115.1 / 168.8 / 224.1 / 337.4 / **387.2** | 70.8 / 66.2 / 51.2 / 37.4 / 26.1 / 15.3 | 0.14 / 0.27 / 0.31 / 0.38 / 0.80 / 1.09 s | 7.9 / 7.1 / 7.2 / 7.4 / 7.5 / 7.2 | 173,120 |
+| 32 seats at mem 0.65 (do not) | 1 / 2 / 4 / 8 / 16 / 32 | 62.9 / 101.0 / 152.9 / 235.8 / 277.0 / 212.9 | 70.7 / 67.0 / 51.1 / 41.4 / 21.7 / 14.8 | 0.52 / 0.62 / 1.17 / 1.62 / 1.25 / 5.59 s | 7.1-7.7 | 49,958 |
+
+Aggregate scales 4.4x from 1 to 16 streams on the 16-seat profile and reaches
+387 at 32 on the 32-seat profile, with the drafter accepting 7-9 tokens a pass
+throughout. The profiles are separate boots; below 16 streams the 32-seat boot is
+8-19% slower (larger CUDA-graph set, and one boot's acceptance draw). The
+configuration fact: the CUDA-graph reservation for N seats comes out of the same
+memory share as the KV pool, so `MAX_RUNNING=16` leaves 238,605 tokens (inputs
+above ~238k are refused) and `MAX_RUNNING=32` needs `MEM_FRACTION=0.80`.
 
 ## 5. Fixed-output acceptance
 
