@@ -72,6 +72,41 @@ SPARK_API_KEY_FILE=${SPARK_API_KEY_FILE:-$HOME/models/vllm_api_key.txt}
 [ -r "$SPARK_API_KEY_FILE" ] || { echo "no API key file at $SPARK_API_KEY_FILE (see README, Quickstart)" >&2; exit 2; }
 KEY=$(cat "$SPARK_API_KEY_FILE")
 [ -d "$HF_CACHE/hub" ] || { echo "HF_CACHE=$HF_CACHE has no hub/ directory; download the checkpoints first (README, Weights)" >&2; exit 2; }
+
+# HF cache refs. `hf download --revision <sha>` writes no refs/ directory at
+# all, and one call inside SGLang reads the DRAFT config with no revision: the
+# speculative-algorithm alias resolver in arg_groups/speculative_hook.py, which
+# runs before any DFLASH handling. Offline that lookup goes through refs/main,
+# so a clean SHA-only follow of the README crash-loops before the engine ever
+# reads --speculative-draft-model-revision. We know both SHAs, so write the
+# refs here. Point refs/main only at a snapshot that holds weights: a partial
+# download can leave it naming a tokenizer-only snapshot (README, Weights).
+write_ref() {                                   # write_ref <repo-id> <sha>
+  local dir="$HF_CACHE/hub/models--${1//\//--}"
+  if [ -z "${2:-}" ]; then
+    # No pin (the reader skipped `source .env`, or uses their own cache).
+    # Say so now rather than after a 200 s boot that ends in a crash loop.
+    if [ -d "$dir" ] && [ ! -f "$dir/refs/main" ]; then
+      echo "warning: $1 has no refs/main and no revision pinned; the offline boot will fail (README, Weights)" >&2
+    fi
+    return 0
+  fi
+  [ -d "$dir/snapshots/$2" ] || return 0
+  if ! compgen -G "$dir/snapshots/$2/*.safetensors" >/dev/null; then
+    echo "warning: $1 snapshot $2 holds no .safetensors; refs/main left alone (README, Weights)" >&2
+    return 0
+  fi
+  [ "$(cat "$dir/refs/main" 2>/dev/null)" = "$2" ] && return 0
+  if mkdir -p "$dir/refs" 2>/dev/null && printf '%s' "$2" > "$dir/refs/main" 2>/dev/null; then
+    echo "refs/main    $1 -> $2"
+  else
+    echo "warning: cannot write $dir/refs/main (root-owned cache?); see README, Weights" >&2
+  fi
+  return 0
+}
+write_ref "$MODEL" "$REVISION"
+if [ "$SPEC" = "1" ]; then write_ref "$DRAFT" "$DRAFT_REVISION"; fi
+
 mkdir -p "$SGLANG_CACHE"
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true

@@ -15,7 +15,7 @@ rather than improvising around it.
 
 1. Check the box: `nvidia-smi` or `nvidia-ctk --version`, `docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu22.04 nvidia-smi` (or the base image you already have) to confirm the GPU is reachable from Docker; `df -h $HOME` for at least 80 GB free; `free -g` and `docker ps` to confirm no other large model server is running.
 2. Read README.md fully. Then read serve.sh and .env.sample.
-3. Weights: follow the README "Weights" section exactly, with the two pinned revisions, into `$HOME/models/hf`. Confirm both snapshot directories exist and contain `.safetensors` files, and that `refs/main` in each names a snapshot that holds them.
+3. Weights: follow the README "Weights" section exactly, with the two pinned revisions, into `$HOME/models/hf`. A `--revision <sha>` download writes no `refs/` directory at all; run the README loop that creates it (`serve.sh` writes it too, at launch). Confirm both snapshot directories exist and contain `.safetensors` files, and that `refs/main` in each names a snapshot that holds them.
 4. API key: create `$HOME/models/vllm_api_key.txt` with `openssl rand -hex 32`, mode 600. Do not display it.
 5. Engine image: `docker build -t qwen38-27b-sglang-dflash2-sm121:0.3.0 -f image/Dockerfile image/`. Report the resulting image ID.
 6. Tactic cache: run the container command from the README's tactic-cache section to install both draws into `$HOME/sglang-cache`. Confirm with the `ls` it prints that both `rank_tp0_pp0_dp0.json` files exist and are mode 600.

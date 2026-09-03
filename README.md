@@ -69,11 +69,33 @@ hf download maurienne-ai/Qwen3.8-27B-DFlash2-NVFP4-RTNcal --revision bd7a934213c
 
 Those are the snapshots every number here was measured on. `.env.sample`
 exports them as `REVISION` and `DRAFT_REVISION`, and `serve.sh` passes them to
-the engine, so a SHA-only download (which writes no `refs/main`) still resolves. One trap:
-a partial download can leave `hub/models--RadixArk--Qwen3.8-27B-NVFP4/refs/main`
-pointing at an incomplete snapshot (ours drifted to one holding only tokenizer
-files), and the offline server then crash-loops on "Can't load image processor".
-`cat refs/main` must name a snapshot directory that holds the safetensors.
+the engine.
+
+**A SHA-only download writes no `refs/main`** — it creates no `refs/` directory
+at all — and one call inside SGLang reads the **draft** config with no revision:
+the speculative-algorithm alias resolver in `arg_groups/speculative_hook.py`,
+which runs before any DFLASH handling. Offline that lookup goes through
+`refs/main`, fails, and the container crash-loops before it ever reads
+`--speculative-draft-model-revision`. Every other draft-side load passes the
+revision; this one call does not. `serve.sh` therefore writes `refs/main`
+itself, from `REVISION` and `DRAFT_REVISION`, and points it only at a snapshot
+that holds `.safetensors`. By hand it is one line per repo:
+
+```bash
+for R in models--RadixArk--Qwen3.8-27B-NVFP4:554ebba9b5f1b79dc11246341960360e6ef05ef4 \
+         models--maurienne-ai--Qwen3.8-27B-DFlash2-NVFP4-RTNcal:bd7a934213c47a9e7ef69eef36bb3325f47fd1f1; do
+  D=$HOME/models/hf/hub/${R%:*}; mkdir -p "$D/refs"; printf '%s' "${R#*:}" > "$D/refs/main"
+done
+```
+
+The related trap: a partial download can leave `refs/main` pointing at an
+incomplete snapshot (ours drifted to one holding only tokenizer files), and the
+offline server then crash-loops on "Can't load image processor". `cat refs/main`
+must name a snapshot directory that holds the safetensors.
+
+Thanks to [@Luc_Gibson](https://x.com/Luc_Gibson), who hit the missing refs on a
+clean follow of this README: without them the boot loops, with them it boots in
+about 200 s.
 
 ## Quickstart
 
